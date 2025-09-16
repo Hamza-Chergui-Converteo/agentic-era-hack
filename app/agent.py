@@ -1,66 +1,69 @@
-# Copyright 2025 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-import datetime
 import os
-from zoneinfo import ZoneInfo
-
-import google.auth
+from dotenv import load_dotenv
+from serpapi import GoogleSearch
 from google.adk.agents import Agent
-
-_, project_id = google.auth.default()
-os.environ.setdefault("GOOGLE_CLOUD_PROJECT", project_id)
-os.environ.setdefault("GOOGLE_CLOUD_LOCATION", "global")
-os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "True")
+from pydantic import BaseModel, Field
 
 
-def get_weather(query: str) -> str:
-    """Simulates a web search. Use it get information on weather.
+# Charger le .env
+load_dotenv()
 
-    Args:
-        query: A string containing the location to get weather information for.
+# --- Tool : Recherche Google via SerpAPI ---
+def search_google(query: str) -> str:
+    api_key = os.getenv("SERPAPI_KEY")
+    if not api_key:
+        return "Erreur: la clé SERPAPI_KEY n'est pas définie!"
 
-    Returns:
-        A string with the simulated weather information for the queried location.
-    """
-    if "sf" in query.lower() or "san francisco" in query.lower():
-        return "It's 60 degrees and foggy."
-    return "It's 90 degrees and sunny."
+    search = GoogleSearch({
+        "q": query,
+        "hl": "fr",
+        "gl": "fr",
+        "num": 10,
+        "api_key": api_key
+    })
+    results = search.get_dict()
+    organic_results = results.get("organic_results", [])
+
+    if not organic_results:
+        return "Aucun résultat trouvé!"
+
+    # Formatage avec rank (position réelle)
+    top_results = []
+    for r in organic_results[:10]:
+        rank = r.get("position", "?")
+        title = r.get("title", "")
+        link = r.get("link", "")
+        snippet = r.get("snippet", "")
+        # top_results.append(f"{rank}. {title}\n   {link}\n   {snippet}")
+        top_results.append(link)
+    return "\n\n".join(top_results)
+
+# --- Agent configuré ---
 
 
-def get_current_time(query: str) -> str:
-    """Simulates getting the current time for a city.
-
-    Args:
-        city: The name of the city to get the current time for.
-
-    Returns:
-        A string with the current time information.
-    """
-    if "sf" in query.lower() or "san francisco" in query.lower():
-        tz_identifier = "America/Los_Angeles"
-    else:
-        return f"Sorry, I don't have timezone information for query: {query}."
-
-    tz = ZoneInfo(tz_identifier)
-    now = datetime.datetime.now(tz)
-    return f"The current time for query {query} is {now.strftime('%Y-%m-%d %H:%M:%S %Z%z')}"
-
+class SearchAgentOutput(BaseModel):
+    search_results: list[str] = Field(description="List of URLs obtained from a Google search")
 
 root_agent = Agent(
     name="root_agent",
-    model="gemini-2.5-flash",
-    instruction="You are a helpful AI assistant designed to provide accurate and useful information.",
-    tools=[get_weather, get_current_time],
+    model="gemini-2.0-flash",
+    description=(
+        "An intelligent research assistant capable of finding and summarizing "
+        "the top 10 Google search results on any requested topic. "
+        "It provides clear, structured, and useful answers!"
+    ),
+    instruction="""
+Your role is to act as a research expert!
+1. When a question involves an internet search, use the GoogleSearchTool.
+2. Summarize the results found in a concise and readable manner.
+3. Highlight important points or common trends among the results.
+4. If a search is not necessary, answer using your own knowledge.
+5. Structure your answers with headings, bullet points, or short paragraphs for clarity.
+6. Always end your sentences with an exclamation mark!
+""",
+    tools=[search_google],
+    # output_schema=SearchAgentOutput, 
+    # output_key="search_results" 
 )
+
+
