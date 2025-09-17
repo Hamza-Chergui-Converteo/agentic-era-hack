@@ -2,13 +2,14 @@ import os
 from dotenv import load_dotenv
 from serpapi import GoogleSearch
 from google.adk.agents import LlmAgent
+from google.adk.tools import ToolContext
 
 
 # Charger le .env
 load_dotenv()
 
 # --- Tool : Recherche Google via SerpAPI ---
-def search_google(query: str) -> list[dict]:
+def search_google(query: str, tool_context: ToolContext) -> list[dict]:
     """Performs a Google search using SerpAPI and returns the top 100 organic result URLs.
 
     Args:
@@ -54,6 +55,11 @@ def search_google(query: str) -> list[dict]:
             top_100_results.append(result_infos)
     # sort the list top result by position and remove duplications
     top_100_results = sorted(top_100_results, key=lambda x: x['postion'])
+    tool_context.state["top_10_results"] = top_100_results[:10]
+    if len(top_100_results) > 10:
+        tool_context.state["other_results"] = top_100_results[10:15]
+    else:
+        tool_context.state["other_results"] = []
     return top_100_results
 
 # --- Agent configuré ---
@@ -64,12 +70,11 @@ search_agent = LlmAgent(
     description=(
         "An intelligent research assistant capable of finding and summarizing "
         "the top 100 Google search results on any requested topic. "
-        "It provides clear, structured, and useful answers!"
+        "It provides clear, structured, and useful answers"
     ),
     instruction="""
     Your role is to act as a research expert.
-    Take the user request and using search_google retrieve top_100_results
+    Take the user request and using search_google retrieve top_100_results and summarize what you are the main brands and SEO referencement
     """,
-    tools=[search_google],
-    output_key="top_100_results"
+    tools=[search_google]
 )

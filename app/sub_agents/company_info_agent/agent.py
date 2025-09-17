@@ -76,12 +76,13 @@ company_info_agent = LlmAgent(
     name="company_info_agent",
     model=os.getenv("MODEL", "gemini-2.5-flash"),
     instruction=(
-        "You are a company info agent. You use the list of URLs from {top_100_results} "
+        "You are a company info agent. You use the list of URLs from {other_results} "
         "First you use the product_page_detector tool to filter out non-product pages. "
         "If it's a product page use the google_searcher tool to find and return: "
         "the company name, number of employees, and a contact email. "
-        "Return a list of objects with keys: url, company_name, num_employees, email. "
+        "Return a list of objects companies_to_filter with keys: url, company_name, num_employees, email. "
         "If information is not found, leave the value empty."
     ),
-    tools=[google_search_tool, is_product_page_tool]
+    tools=[google_search_tool, is_product_page_tool],
+    output_key="companies_to_filter"
 )
