@@ -11,4 +11,4 @@ from google.adk.agents import SequentialAgent
 load_dotenv()
 
 
-root_agent = SequentialAgent(name="seo_agent", sub_agents=[search_agent,company_info_agent])
+root_agent = SequentialAgent(name="seo_agent", sub_agents=[search_agent])#company_info_agent
