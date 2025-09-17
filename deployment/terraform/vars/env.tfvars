@@ -1,19 +1,11 @@
-# Project name used for resource naming
-project_name = "seo-agent"
-
-# Your Production Google Cloud project id
-prod_project_id = "your-production-project-id"
-
-# Your Staging / Test Google Cloud project id
-staging_project_id = "your-staging-project-id"
-
-# Your Google Cloud project ID that will be used to host the Cloud Build pipelines.
-cicd_runner_project_id = "your-cicd-project-id"
-# Name of the host connection you created in Cloud Build
-host_connection_name = "git-seo-agent"
-
-# Name of the repository you added to Cloud Build
-repository_name = "seo-agent"
-
-# The Google Cloud region you will use to deploy the infrastructure
+staging_project_id = "qwiklabs-gcp-04-8d5b91e74627"
+prod_project_id = "qwiklabs-gcp-04-27cfc397f163"
+cicd_runner_project_id = "qwiklabs-gcp-04-27cfc397f163"
 region = "us-central1"
+repository_name = "agentic-era-hack"
+repository_owner = "Hamza-Chergui-Converteo"
+host_connection_name = "git-agentic-era-hack"
+create_cb_connection = true
+create_repository = false
+github_app_installation_id = "86327892"
+github_pat_secret_id = "git-agentic-era-hack-github-oauthtoken-67cf04"
