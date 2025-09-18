@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from serpapi import GoogleSearch
 from google.adk.agents import LlmAgent
 from google.adk.tools import ToolContext
+from .tools import scrap_page
 
 
 # Charger le .env
@@ -20,8 +21,8 @@ def search_google(query: str, tool_context: ToolContext) -> list[dict]:
         Exception: If the SerpAPI call returns an error.
 
     Returns:
-        A string containing the URLs of the top 10 search results,
-        separated by double newlines. Returns a message if no results are found.
+        A list of dictionaries containing information about the top 100 search results.
+        Returns an empty list if no results are found.
     """
     api_key = os.getenv("SERPAPI_KEY")
     if not api_key:
@@ -42,19 +43,23 @@ def search_google(query: str, tool_context: ToolContext) -> list[dict]:
 
         organic_results = results.get("organic_results", [])
         if not organic_results:
-            return "No organic results found for the query."
+            break  # No more results, stop fetching.
         # Formatage avec rank (position réelle)
         
         for r in organic_results:
-            result_infos = {'postion': r.get("position"),
-            'title': r.get("title"),
-            'link': r.get("link"),
-            'snippet': r.get("snippet"),
-            'snippet_highlighted_words': r.get("snippet_highlighted_words")
-            }
-            top_100_results.append(result_infos)
+            if r.get("link"):
+                page_content = scrap_page(r.get("link"))
+                result_infos = {
+                    'position': r.get("position"),
+                    'title': r.get("title"),
+                    'link': r.get("link"),
+                    'snippet': r.get("snippet"),
+                    'snippet_highlighted_words': r.get("snippet_highlighted_words"),
+                    'content': page_content,
+                }
+                top_100_results.append(result_infos)
     # sort the list top result by position and remove duplications
-    top_100_results = sorted(top_100_results, key=lambda x: x['postion'])
+    top_100_results = sorted(top_100_results, key=lambda x: x['position'])
     tool_context.state["top_10_results"] = top_100_results[:10]
     if len(top_100_results) > 10:
         tool_context.state["other_results"] = top_100_results[10:15]
