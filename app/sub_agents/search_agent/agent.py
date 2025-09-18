@@ -27,7 +27,7 @@ def search_google(query: str, tool_context: ToolContext) -> list[dict]:
     if not api_key:
         raise ValueError("SERPAPI_KEY environment variable not set!")
     top_100_results = []
-    for i in range(0,100,10):
+    for i in range(0,20,10):
         search = GoogleSearch({
             "q": query,
             "hl": "en",

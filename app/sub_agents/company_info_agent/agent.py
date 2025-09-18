@@ -120,7 +120,7 @@ def get_infos_companies(tool_context: ToolContext) -> dict:
         info = json.loads(response.text)
         info['url'] = link
         companies_info.append(info)
-    tool_context.state["companies_to_filter"] = companies_info
+    tool_context.state["companies_filtered"] = companies_info
     return json.dumps(companies_info)
 
 company_info_agent = LlmAgent(
@@ -130,7 +130,6 @@ company_info_agent = LlmAgent(
     The initial list of URLs is in the 'other_results' state variable.
     1. First, call the `filter_product_pages` tool to identify which of these are product/company pages. This will populate the 'product_pages' state.
     2. Then, call the `get_infos_companies` tool to search for and extract company details for each page. This will populate the 'companies_to_filter' state.
-    3. Finally, return the content of the 'companies_to_filter' state variable as your final answer in JSON format.""",
+    3. Finally, return the content of the 'companies_filtered' state variable as your final answer in JSON format.""",
     tools=[filter_product_pages, get_infos_companies],
-    output_key="companies_to_filter"
 )
