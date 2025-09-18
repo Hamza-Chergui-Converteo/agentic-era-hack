@@ -1,15 +1,32 @@
 
 import os
 import requests
-from google.adk.tools import google_search
+import json
+from google.adk.tools import google_search, ToolContext
+from google.genai.types import GenerateContentConfig, UrlContext
 from google.adk.tools.agent_tool import AgentTool
 from google.adk.agents import LlmAgent
 from google import genai
 from bs4 import BeautifulSoup
 from google.adk import Agent
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 load_dotenv()
 
+class CompanyInfo(BaseModel):
+    """Extracted company information."""
+    company_name: str = Field(description="Name of the company.")
+    num_employees: str = Field(description="Number of employees, as a string.")
+    email: str = Field(description="Contact email of the company.")
+
+class IsProductPage(BaseModel):
+    """Whether the page is a product page or not."""
+    is_product_page: bool = Field(description="True if the page is a company product page or homepage, False otherwise.")
+
+# Initialize the generative model once and reuse it.
+# This is more efficient than creating a new model for each function call.
+client = genai.Client()
+model = os.getenv("MODEL", "gemini-2.5-flash")
 
 def fetch_page_content(url: str) -> str:
     """Fetches and extracts text content from a web page.
@@ -37,52 +54,83 @@ def fetch_page_content(url: str) -> str:
     except Exception:
         return ""
 
+def filter_product_pages(tool_context: ToolContext) -> str:
+    """Fetches content for pages in 'other_results', uses Gemini to analyze if they are
+    product pages, and returns a JSON string of the pages that are.
+    """
+    tools = [
+      {"url_context": {}},
+    ]
+    product_pages = []
+    instruction = """You are a specialist in identifying company product pages and official company websites.
+    Analyze the provided URL and page content to determine if it represents a company product page
+    (e.g., shows products, describes company offerings) or an official company homepage.
+    Consider factors like: product listings, company information, service descriptions,
+    contact information, about pages, and overall website structure. STRICT Answer ONLY with 'yes' or 'no'"""
 
-# Create a specialized agent for product page detection
-product_page_detection_agent = LlmAgent(
-    name="product_page_detector",
-    model=os.getenv("MODEL", "gemini-2.5-flash"),
-    instruction=(
-        "You are a specialist in identifying company product pages and official company websites. "
-        "Analyze the provided URL and page content to determine if it represents a company product page "
-        "(e.g., shows products, describes company offerings) or an official company homepage. "
-        "Consider factors like: product listings, company information, service descriptions, "
-        "contact information, about pages, and overall website structure. "
-        "Respond with 'yes' if it's a company product page or homepage, 'no' otherwise."
-    ),
-    description="Specialized agent for detecting company product pages and official websites",
-    tools=[fetch_page_content]
-)
+    results = tool_context.state.get("other_results", [])
 
-# Create a specialized agent for Google search
-google_search_agent = LlmAgent(
-    name="google_searcher",
-    model=os.getenv("MODEL", "gemini-2.5-flash"),
-    instruction=(
-        "You are a Google search specialist. When given a search query, use the google_search tool "
-        "to find relevant information. Focus on finding accurate, up-to-date information about "
-        "companies, including their names, employee counts, contact information, and other relevant details. "
-        "Provide clear, structured responses based on the search results."
-    ),
-    description="Specialized agent for performing Google searches and extracting company information",
-    tools=[google_search]
-)
+    for result_page in results:
+        link = result_page.get("link")
+        if not link:
+            continue
+        # For each fetched content, call Gemini and analyze
+        prompt = f"{instruction}\n\nURL: {link}"
+        response = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=GenerateContentConfig(tools=tools),
+        )
+        print(response.text)
+        if response.text and "yes" in response.text.lower():
+            product_pages.append(result_page)
+    tool_context.state["product_pages"] = product_pages
+    return 'Product pages detection done'
 
-# Wrap the agents as tools using AgentTool
-is_product_page_tool = AgentTool(agent=product_page_detection_agent)
-google_search_tool = AgentTool(agent=google_search_agent)
+def get_infos_companies(tool_context: ToolContext) -> dict:
+    tools = [
+      {"url_context": {}},
+      {"google_search": {}},
+    ]
+    companies_info = []
+    extraction_instruction = """From the URL, use the google_search and url_context tools to get the following information about the company: "company_name", "num_employees" and "email".
+    If a piece of information is not found, use an empty string "" as the value.
+    """
+    product_pages = tool_context.state.get("product_pages", [])
+    if not product_pages:
+        return "[]"
+    for page in product_pages:
+        link = page.get("link")
+        if not link:
+            continue
+        prompt = f" URL: {link} {extraction_instruction}"
+        response = client.models.generate_content(
+            model=model,
+            contents=prompt,
+            config=GenerateContentConfig(tools=tools)
+        )
+        print(response.text)
+        print('*****************')
+        response = client.models.generate_content(
+            model=model,
+            contents=f"Structure the output : {response.text}",
+            config=GenerateContentConfig(response_mime_type="application/json", response_schema=CompanyInfo)
+        )
+        print(response.text)
+        info = json.loads(response.text)
+        info['url'] = link
+        companies_info.append(info)
+    tool_context.state["companies_to_filter"] = companies_info
+    return json.dumps(companies_info)
 
 company_info_agent = LlmAgent(
     name="company_info_agent",
     model=os.getenv("MODEL", "gemini-2.5-flash"),
-    instruction=(
-        "You are a company info agent. You use the list of URLs from {other_results} "
-        "First you use the product_page_detector tool to filter out non-product pages. "
-        "If it's a product page use the google_searcher tool to find and return: "
-        "the company name, number of employees, and a contact email. "
-        "Return a list of objects companies_to_filter with keys: url, company_name, num_employees, email. "
-        "If information is not found, leave the value empty."
-    ),
-    tools=[google_search_tool, is_product_page_tool],
+    instruction="""You are a company info agent. Your goal is to find information about companies from a list of URLs.
+    The initial list of URLs is in the 'other_results' state variable.
+    1. First, call the `filter_product_pages` tool to identify which of these are product/company pages. This will populate the 'product_pages' state.
+    2. Then, call the `get_infos_companies` tool to search for and extract company details for each page. This will populate the 'companies_to_filter' state.
+    3. Finally, return the content of the 'companies_to_filter' state variable as your final answer in JSON format.""",
+    tools=[filter_product_pages, get_infos_companies],
     output_key="companies_to_filter"
 )

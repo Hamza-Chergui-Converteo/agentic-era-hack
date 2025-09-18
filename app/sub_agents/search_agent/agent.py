@@ -3,7 +3,6 @@ from dotenv import load_dotenv
 from serpapi import GoogleSearch
 from google.adk.agents import LlmAgent
 from google.adk.tools import ToolContext
-from .tools import scrap_page
 
 
 # Charger le .env
@@ -48,21 +47,19 @@ def search_google(query: str, tool_context: ToolContext) -> list[dict]:
         
         for r in organic_results:
             if r.get("link"):
-                page_content = scrap_page(r.get("link"))
                 result_infos = {
                     'position': r.get("position"),
                     'title': r.get("title"),
                     'link': r.get("link"),
                     'snippet': r.get("snippet"),
                     'snippet_highlighted_words': r.get("snippet_highlighted_words"),
-                    'content': page_content,
                 }
                 top_100_results.append(result_infos)
     # sort the list top result by position and remove duplications
     top_100_results = sorted(top_100_results, key=lambda x: x['position'])
     tool_context.state["top_10_results"] = top_100_results[:10]
     if len(top_100_results) > 10:
-        tool_context.state["other_results"] = top_100_results[10:15]
+        tool_context.state["other_results"] = top_100_results[10:]
     else:
         tool_context.state["other_results"] = []
     return top_100_results
